@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import pool from '../db/connection';
+import { getPool } from '../db/connection';
 import { getAllColorValues, deltaE76, rgbToLab } from '../utils/colorConversion';
 import { ColorReadingInput, ColorReading } from '../types/ColorReading';
 
@@ -20,6 +20,8 @@ router.post('/', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'RGB values must be between 0 and 255' });
       return;
     }
+
+    const pool = getPool();
 
     // Calculate all color values
     const colorValues = getAllColorValues(r, g, b);
@@ -83,6 +85,7 @@ router.get('/', async (req: Request, res: Response) => {
       return;
     }
 
+    const pool = getPool();
     const result = await pool.query<ColorReading>(
       `SELECT * FROM color_readings
        WHERE device_id = $1
@@ -103,6 +106,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
+    const pool = getPool();
     const result = await pool.query<ColorReading>(
       'SELECT * FROM color_readings WHERE id = $1',
       [id]
@@ -125,6 +129,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
+    const pool = getPool();
     const result = await pool.query(
       'DELETE FROM color_readings WHERE id = $1 RETURNING id',
       [id]
@@ -147,6 +152,7 @@ router.get('/compare/:id1/:id2', async (req: Request, res: Response) => {
   try {
     const { id1, id2 } = req.params;
 
+    const pool = getPool();
     const result = await pool.query<ColorReading>(
       'SELECT * FROM color_readings WHERE id IN ($1, $2)',
       [id1, id2]
