@@ -64,7 +64,7 @@ export async function runMigrations(): Promise<void> {
 
   console.log('Running database migrations...');
 
-  // Create lab_samples table first
+  // Step 1: Create lab_samples table first
   const createLabSamplesSQL = `
     CREATE TABLE IF NOT EXISTS lab_samples (
         id SERIAL PRIMARY KEY,
@@ -78,7 +78,21 @@ export async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_samples_created ON lab_samples(created_at DESC);
   `;
 
-  // Create color_readings table with sample_id foreign key
+  // Step 2: Add sample_id column to existing color_readings table if needed
+  const addSampleIdSQL = `
+    DO $$
+    BEGIN
+      -- First check if color_readings table exists
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'color_readings') THEN
+        -- Add sample_id column if it doesn't exist
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'color_readings' AND column_name = 'sample_id') THEN
+          ALTER TABLE color_readings ADD COLUMN sample_id INTEGER REFERENCES lab_samples(id) ON DELETE CASCADE;
+        END IF;
+      END IF;
+    END $$;
+  `;
+
+  // Step 3: Create color_readings table if it doesn't exist (for fresh installs)
   const createReadingsSQL = `
     CREATE TABLE IF NOT EXISTS color_readings (
         id SERIAL PRIMARY KEY,
@@ -99,29 +113,29 @@ export async function runMigrations(): Promise<void> {
         lab_b DECIMAL(6,2),
         delta_e DECIMAL(6,2)
     );
+  `;
 
+  // Step 4: Create indexes (only after sample_id column exists)
+  const createIndexesSQL = `
     CREATE INDEX IF NOT EXISTS idx_readings_device ON color_readings(device_id);
-    CREATE INDEX IF NOT EXISTS idx_readings_sample ON color_readings(sample_id);
     CREATE INDEX IF NOT EXISTS idx_readings_timestamp ON color_readings(timestamp DESC);
   `;
 
-  // Add sample_id column if table exists but column doesn't
-  const addSampleIdSQL = `
+  const createSampleIdIndexSQL = `
     DO $$
     BEGIN
-      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'color_readings') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'color_readings' AND column_name = 'sample_id') THEN
-          ALTER TABLE color_readings ADD COLUMN sample_id INTEGER REFERENCES lab_samples(id) ON DELETE CASCADE;
-          CREATE INDEX IF NOT EXISTS idx_readings_sample ON color_readings(sample_id);
-        END IF;
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'color_readings' AND column_name = 'sample_id') THEN
+        CREATE INDEX IF NOT EXISTS idx_readings_sample ON color_readings(sample_id);
       END IF;
     END $$;
   `;
 
   try {
     await pool.query(createLabSamplesSQL);
-    await pool.query(createReadingsSQL);
     await pool.query(addSampleIdSQL);
+    await pool.query(createReadingsSQL);
+    await pool.query(createIndexesSQL);
+    await pool.query(createSampleIdIndexSQL);
     console.log('Migrations completed successfully');
   } catch (error) {
     console.error('Migration error:', error);
