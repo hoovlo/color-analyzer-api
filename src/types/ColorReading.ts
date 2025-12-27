@@ -1,15 +1,31 @@
+// Lab Sample types
+export interface LabSampleInput {
+  device_id: string;
+  name: string;
+  notes?: string;
+}
+
+export interface LabSample {
+  id: number;
+  device_id: string;
+  name: string;
+  notes: string | null;
+  created_at: Date;
+}
+
+// Color Reading types
 export interface ColorReadingInput {
   device_id: string;
+  sample_id: number;
   r: number;
   g: number;
   b: number;
-  notes?: string;
-  sample_name?: string;
 }
 
 export interface ColorReading {
   id: number;
   device_id: string;
+  sample_id: number | null;
   timestamp: Date;
   r: number;
   g: number;
@@ -23,9 +39,12 @@ export interface ColorReading {
   lab_l: number;
   lab_a: number;
   lab_b: number;
-  notes: string | null;
-  sample_name: string | null;
   delta_e: number | null;
+}
+
+export interface ColorReadingWithSample extends ColorReading {
+  sample_name?: string;
+  sample_notes?: string;
 }
 
 export interface ColorComparison {

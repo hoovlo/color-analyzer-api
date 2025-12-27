@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { ensureConnection, runMigrations } from './db/connection';
 import readingsRouter from './routes/readings';
+import samplesRouter from './routes/samples';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,6 +17,7 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
+app.use('/api/samples', samplesRouter);
 app.use('/api/readings', readingsRouter);
 
 // Error handling middleware

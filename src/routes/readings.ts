@@ -8,11 +8,11 @@ const router = Router();
 // POST /api/readings - Create a new color reading
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { device_id, r, g, b, notes, sample_name }: ColorReadingInput = req.body;
+    const { device_id, sample_id, r, g, b }: ColorReadingInput = req.body;
 
     // Validate input
-    if (!device_id || r === undefined || g === undefined || b === undefined) {
-      res.status(400).json({ error: 'Missing required fields: device_id, r, g, b' });
+    if (!device_id || !sample_id || r === undefined || g === undefined || b === undefined) {
+      res.status(400).json({ error: 'Missing required fields: device_id, sample_id, r, g, b' });
       return;
     }
 
@@ -23,16 +23,26 @@ router.post('/', async (req: Request, res: Response) => {
 
     const pool = getPool();
 
+    // Verify sample exists
+    const sampleCheck = await pool.query(
+      'SELECT id FROM lab_samples WHERE id = $1',
+      [sample_id]
+    );
+    if (sampleCheck.rows.length === 0) {
+      res.status(404).json({ error: 'Sample not found' });
+      return;
+    }
+
     // Calculate all color values
     const colorValues = getAllColorValues(r, g, b);
     const currentLab = rgbToLab(r, g, b);
 
-    // Get the previous reading for this device to calculate delta E
+    // Get the previous reading for this SAMPLE to calculate delta E
     const prevResult = await pool.query<ColorReading>(
       `SELECT lab_l, lab_a, lab_b FROM color_readings
-       WHERE device_id = $1
+       WHERE sample_id = $1
        ORDER BY timestamp DESC LIMIT 1`,
-      [device_id]
+      [sample_id]
     );
 
     let delta_e: number | null = null;
@@ -48,11 +58,11 @@ router.post('/', async (req: Request, res: Response) => {
     // Insert the new reading
     const result = await pool.query<ColorReading>(
       `INSERT INTO color_readings
-       (device_id, r, g, b, hex, hue, saturation_l, lightness, saturation_v, value, lab_l, lab_a, lab_b, notes, sample_name, delta_e)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       (device_id, sample_id, r, g, b, hex, hue, saturation_l, lightness, saturation_v, value, lab_l, lab_a, lab_b, delta_e)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING *`,
       [
-        device_id, r, g, b,
+        device_id, sample_id, r, g, b,
         colorValues.hex,
         colorValues.hue,
         colorValues.saturation_l,
@@ -62,8 +72,6 @@ router.post('/', async (req: Request, res: Response) => {
         colorValues.lab_l,
         colorValues.lab_a,
         colorValues.lab_b,
-        notes || null,
-        sample_name || null,
         delta_e
       ]
     );
@@ -75,25 +83,41 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/readings - Get all readings for a device
+// GET /api/readings - Get all readings for a device or sample
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { device_id, limit = 100, offset = 0 } = req.query;
+    const { device_id, sample_id, limit = 100, offset = 0 } = req.query;
 
-    if (!device_id) {
-      res.status(400).json({ error: 'device_id query parameter is required' });
+    if (!device_id && !sample_id) {
+      res.status(400).json({ error: 'device_id or sample_id query parameter is required' });
       return;
     }
 
     const pool = getPool();
-    const result = await pool.query<ColorReading>(
-      `SELECT * FROM color_readings
-       WHERE device_id = $1
-       ORDER BY timestamp DESC
-       LIMIT $2 OFFSET $3`,
-      [device_id, Number(limit), Number(offset)]
-    );
+    let query: string;
+    let params: any[];
 
+    if (sample_id) {
+      // Get readings for a specific sample
+      query = `SELECT r.*, s.name as sample_name, s.notes as sample_notes
+               FROM color_readings r
+               LEFT JOIN lab_samples s ON r.sample_id = s.id
+               WHERE r.sample_id = $1
+               ORDER BY r.timestamp DESC
+               LIMIT $2 OFFSET $3`;
+      params = [sample_id, Number(limit), Number(offset)];
+    } else {
+      // Get all readings for a device
+      query = `SELECT r.*, s.name as sample_name, s.notes as sample_notes
+               FROM color_readings r
+               LEFT JOIN lab_samples s ON r.sample_id = s.id
+               WHERE r.device_id = $1
+               ORDER BY r.timestamp DESC
+               LIMIT $2 OFFSET $3`;
+      params = [device_id, Number(limit), Number(offset)];
+    }
+
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching readings:', error);
