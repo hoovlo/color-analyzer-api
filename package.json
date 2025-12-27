@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "migrate": "tsx src/db/migrate.ts"
+    "start": "node dist/index.js"
   },
   "keywords": ["color", "analysis", "lab"],
   "author": "",
